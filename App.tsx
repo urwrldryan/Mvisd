@@ -211,12 +211,18 @@ const App: React.FC = () => {
   }, []);
   
   const handleSendMessage = useCallback((text: string) => {
-      if (!currentUser) return;
-      const newMessage: ChatMessage = { id: Date.now(), username: currentUser.username, text, timestamp: new Date() };
-      const updatedMessages = [...chatMessages, newMessage];
-      setChatMessages(updatedMessages);
-      localStorage.setItem('chatMessages', JSON.stringify(updatedMessages));
-  }, [currentUser, chatMessages]);
+    if (!currentUser) return;
+    const newMessage: ChatMessage = { id: Date.now(), username: currentUser.username, text, timestamp: new Date() };
+    
+    // Use a functional update to get the latest state and prevent race conditions.
+    // This is more robust for real-time syncing across tabs.
+    setChatMessages(prevMessages => {
+        const updatedMessages = [...prevMessages, newMessage];
+        // This direct write to localStorage is crucial for triggering the 'storage' event for other tabs immediately.
+        localStorage.setItem('chatMessages', JSON.stringify(updatedMessages));
+        return updatedMessages;
+    });
+  }, [currentUser]);
 
   const handleChangeUsername = useCallback((newUsername: string) => {
     if (!currentUser) return;
