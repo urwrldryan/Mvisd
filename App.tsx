@@ -73,11 +73,6 @@ const App: React.FC = () => {
   const [auditLog, setAuditLog] = useState<AuditLogEntry[]>(() => getFromLocalStorage('auditLog', []));
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>(() => getFromLocalStorage('chatMessages', []));
 
-  useEffect(() => { localStorage.setItem('uploads', JSON.stringify(uploads)); }, [uploads]);
-  useEffect(() => { localStorage.setItem('users', JSON.stringify(users)); }, [users]);
-  useEffect(() => { localStorage.setItem('auditLog', JSON.stringify(auditLog)); }, [auditLog]);
-  useEffect(() => { localStorage.setItem('chatMessages', JSON.stringify(chatMessages)); }, [chatMessages]);
-
   useEffect(() => {
     if (currentUser) {
         const remember = localStorage.getItem('rememberUser') === 'true';
@@ -137,7 +132,11 @@ const App: React.FC = () => {
       description: 'A new user submission.',
       submittedBy: currentUser.username
     };
-    setUploads(prev => [newUpload, ...prev]);
+    setUploads(prev => {
+        const updatedUploads = [newUpload, ...prev];
+        localStorage.setItem('uploads', JSON.stringify(updatedUploads));
+        return updatedUploads;
+    });
     setAlert({ message: 'Upload successful! Your submission is pending approval.', type: 'success' });
     setActiveTab('community');
   }, [currentUser]);
@@ -145,17 +144,26 @@ const App: React.FC = () => {
   const handleApprove = useCallback((id: number) => {
     if (!currentUser || !['admin', 'co-owner', 'owner'].includes(currentUser.role)) return;
     let approvedItem: UploadItem | undefined;
-    setUploads(prev =>
-      prev.map(item => {
+    
+    setUploads(prev => {
+      const updatedUploads = prev.map(item => {
         if (item.id === id) {
           approvedItem = { ...item, status: 'approved' };
           return approvedItem;
         }
         return item;
-      })
-    );
+      });
+      localStorage.setItem('uploads', JSON.stringify(updatedUploads));
+      return updatedUploads;
+    });
+    
     if (approvedItem) {
-      setAuditLog(prev => [{ adminUsername: currentUser.username, action: 'approved', uploadId: id, uploadTitle: approvedItem!.title, timestamp: new Date() }, ...prev]);
+      setAuditLog(prev => {
+        const newLogEntry = { adminUsername: currentUser.username, action: 'approved' as const, uploadId: id, uploadTitle: approvedItem!.title, timestamp: new Date() };
+        const updatedLog = [newLogEntry, ...prev];
+        localStorage.setItem('auditLog', JSON.stringify(updatedLog));
+        return updatedLog;
+      });
     }
     setAlert({ message: `Submission #${id} has been approved.`, type: 'info' });
   }, [currentUser]);
@@ -163,16 +171,31 @@ const App: React.FC = () => {
   const handleReject = useCallback((id: number) => {
     if (!currentUser || !['admin', 'co-owner', 'owner'].includes(currentUser.role)) return;
     const rejectedItem = uploads.find(item => item.id === id);
-    setUploads(prev => prev.filter(item => item.id !== id));
+
+    setUploads(prev => {
+        const updatedUploads = prev.filter(item => item.id !== id);
+        localStorage.setItem('uploads', JSON.stringify(updatedUploads));
+        return updatedUploads;
+    });
+
     if (rejectedItem) {
-      setAuditLog(prev => [{ adminUsername: currentUser.username, action: 'rejected', uploadId: id, uploadTitle: rejectedItem.title, timestamp: new Date() }, ...prev]);
+      setAuditLog(prev => {
+        const newLogEntry = { adminUsername: currentUser.username, action: 'rejected' as const, uploadId: id, uploadTitle: rejectedItem.title, timestamp: new Date() };
+        const updatedLog = [newLogEntry, ...prev];
+        localStorage.setItem('auditLog', JSON.stringify(updatedLog));
+        return updatedLog;
+      });
     }
     setAlert({ message: `Submission #${id} has been rejected and removed.`, type: 'info' });
   }, [uploads, currentUser]);
   
   const handleRemove = useCallback((id: number) => {
     if (!currentUser || !['admin', 'co-owner', 'owner'].includes(currentUser.role)) return;
-    setUploads(prev => prev.filter(item => item.id !== id));
+    setUploads(prev => {
+        const updatedUploads = prev.filter(item => item.id !== id);
+        localStorage.setItem('uploads', JSON.stringify(updatedUploads));
+        return updatedUploads;
+    });
     setAlert({ message: `Post #${id} has been removed.`, type: 'info' });
   }, [currentUser]);
 
@@ -182,8 +205,13 @@ const App: React.FC = () => {
           return;
       }
       const newUser: User = { id: Date.now(), username, password, role: 'user' };
-      setUsers(prev => [...prev, newUser]);
-      // Log in the new user automatically, but don't "remember" them by default.
+      
+      setUsers(prevUsers => {
+          const updatedUsers = [...prevUsers, newUser];
+          localStorage.setItem('users', JSON.stringify(updatedUsers));
+          return updatedUsers;
+      });
+      
       localStorage.removeItem('rememberUser');
       setCurrentUser(newUser);
       setAlert({ message: `Welcome, ${username}! Your account has been created.`, type: 'success' });
@@ -214,43 +242,54 @@ const App: React.FC = () => {
     if (!currentUser) return;
     const newMessage: ChatMessage = { id: Date.now(), username: currentUser.username, text, timestamp: new Date() };
     
-    // Use a functional update to get the latest state and prevent race conditions.
-    // This is more robust for real-time syncing across tabs.
     setChatMessages(prevMessages => {
         const updatedMessages = [...prevMessages, newMessage];
-        // This direct write to localStorage is crucial for triggering the 'storage' event for other tabs immediately.
         localStorage.setItem('chatMessages', JSON.stringify(updatedMessages));
         return updatedMessages;
     });
   }, [currentUser]);
 
   const handleChangeUsername = useCallback((newUsername: string) => {
-    if (!currentUser) return;
+    if (!currentUser) return false;
     if (users.some(u => u.username.toLowerCase() === newUsername.toLowerCase() && u.id !== currentUser.id)) {
         setAlert({ message: 'This username is already taken.', type: 'error' });
         return false;
     }
     const oldUsername = currentUser.username;
     
-    // Update user in users list
-    setUsers(prev => prev.map(u => u.id === currentUser.id ? { ...u, username: newUsername } : u));
+    const updatedUser = { ...currentUser, username: newUsername };
+    const updatedUsers = users.map(u => u.id === currentUser.id ? updatedUser : u);
+    const updatedUploads = uploads.map(u => u.submittedBy === oldUsername ? { ...u, submittedBy: newUsername } : u);
+    const updatedChatMessages = chatMessages.map(m => m.username === oldUsername ? { ...m, username: newUsername } : m);
+    const updatedAuditLog = auditLog.map(l => l.adminUsername === oldUsername ? { ...l, adminUsername: newUsername } : l);
+
+    localStorage.setItem('users', JSON.stringify(updatedUsers));
+    localStorage.setItem('uploads', JSON.stringify(updatedUploads));
+    localStorage.setItem('chatMessages', JSON.stringify(updatedChatMessages));
+    localStorage.setItem('auditLog', JSON.stringify(updatedAuditLog));
+
+    setUsers(updatedUsers);
+    setUploads(updatedUploads);
+    setChatMessages(updatedChatMessages);
+    setAuditLog(updatedAuditLog);
+    setCurrentUser(updatedUser);
     
-    // Update currentUser state
-    setCurrentUser(prev => prev ? { ...prev, username: newUsername } : null);
-
-    // Update username in other parts of the app state
-    setUploads(prev => prev.map(u => u.submittedBy === oldUsername ? { ...u, submittedBy: newUsername } : u));
-    setChatMessages(prev => prev.map(m => m.username === oldUsername ? { ...m, username: newUsername } : m));
-    setAuditLog(prev => prev.map(l => l.adminUsername === oldUsername ? { ...l, adminUsername: newUsername } : l));
-
     setAlert({ message: `Your username has been updated to ${newUsername}.`, type: 'success' });
     return true;
-  }, [currentUser, users]);
+  }, [currentUser, users, uploads, chatMessages, auditLog]);
 
   const handleChangePassword = useCallback((newPassword: string) => {
-    if (!currentUser) return;
-    setUsers(prev => prev.map(u => u.id === currentUser.id ? { ...u, password: newPassword } : u));
-    setCurrentUser(prev => prev ? { ...prev, password: newPassword } : null);
+    if (!currentUser) return false;
+    
+    const updatedUser = { ...currentUser, password: newPassword };
+    
+    setUsers(prev => {
+        const updatedUsers = prev.map(u => u.id === currentUser.id ? updatedUser : u);
+        localStorage.setItem('users', JSON.stringify(updatedUsers));
+        return updatedUsers;
+    });
+
+    setCurrentUser(updatedUser);
     setAlert({ message: 'Your password has been changed successfully.', type: 'success' });
     return true;
   }, [currentUser]);
@@ -264,7 +303,11 @@ const App: React.FC = () => {
         setAlert({ message: 'You cannot change your own role.', type: 'error' });
         return;
     }
-    setUsers(prev => prev.map(u => u.id === userId ? { ...u, role: newRole } : u));
+    setUsers(prev => {
+        const updatedUsers = prev.map(u => u.id === userId ? { ...u, role: newRole } : u);
+        localStorage.setItem('users', JSON.stringify(updatedUsers));
+        return updatedUsers;
+    });
     setAlert({ message: 'User role has been updated.', type: 'success' });
   }, [currentUser]);
 
@@ -285,7 +328,11 @@ const App: React.FC = () => {
           return;
       }
 
-      setUsers(prev => prev.filter(u => u.id !== userId));
+      setUsers(prev => {
+          const updatedUsers = prev.filter(u => u.id !== userId);
+          localStorage.setItem('users', JSON.stringify(updatedUsers));
+          return updatedUsers;
+      });
       setAlert({ message: `User "${userToDelete.username}" has been deleted.`, type: 'success' });
 
   }, [currentUser, users]);
