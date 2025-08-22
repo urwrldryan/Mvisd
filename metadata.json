@@ -1,0 +1,5 @@
+{
+  "name": "Secure Content Hub",
+  "description": "A modern web application to securely upload content links, view community submissions, and moderate them through an admin panel.",
+  "requestFramePermissions": []
+}
