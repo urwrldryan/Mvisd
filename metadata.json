@@ -1,5 +1,5 @@
 {
-  "name": "Secure Content Hub",
-  "description": "A modern web application to securely upload content links, view community submissions, and moderate them through an admin panel.",
+  "name": "mvisd link finders",
+  "description": "An application for mvisd to find, share, and moderate community links.",
   "requestFramePermissions": []
 }

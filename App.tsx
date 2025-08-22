@@ -6,6 +6,30 @@ import AdminTab from './components/AdminTab';
 import Tabs from './components/Tabs';
 import Alert from './components/Alert';
 
+// Helper function to get item from localStorage and handle date parsing for audit log
+const getFromLocalStorage = <T,>(key: string, defaultValue: T): T => {
+  try {
+    const item = window.localStorage.getItem(key);
+    if (!item) return defaultValue;
+
+    const data = JSON.parse(item);
+    
+    // Special handling to convert timestamp strings back to Date objects
+    if (key === 'auditLog' && Array.isArray(data)) {
+      return data.map((log: any) => ({
+        ...log,
+        timestamp: new Date(log.timestamp),
+      })) as T;
+    }
+    
+    return data;
+  } catch (error) {
+    console.warn(`Error reading localStorage key “${key}”:`, error);
+    return defaultValue;
+  }
+};
+
+
 const BackgroundAnimation: React.FC = () => (
     <div className="background-shapes" aria-hidden="true">
         <div className="shape" style={{ left: '10%', width: '80px', height: '80px', animationDelay: '0s' }}></div>
@@ -22,20 +46,44 @@ const BackgroundAnimation: React.FC = () => (
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<Tab>('main');
-  const [uploads, setUploads] = useState<UploadItem[]>([
+  const [uploads, setUploads] = useState<UploadItem[]>(() => getFromLocalStorage('uploads', [
       { id: 1, title: 'Awesome Design Resources', url: 'https://example.com/designs', status: 'approved', description: 'A collection of great design tools.' },
       { id: 2, title: 'React Best Practices', url: 'https://example.com/react-bp', status: 'pending', description: 'Guide to writing better React code.' },
       { id: 3, title: 'Another Pending Item', url: 'https://example.com/another-pending', status: 'pending', description: 'Awaiting moderation.'},
       { id: 4, title: 'Tailwind CSS Cheatsheet', url: 'https://example.com/tailwind-cheats', status: 'approved', description: 'A handy reference for Tailwind classes.'}
-  ]);
+  ]));
   const [alert, setAlert] = useState<AlertMessage | null>(null);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [adminUsers, setAdminUsers] = useState<User[]>([
+  const [adminUsers, setAdminUsers] = useState<User[]>(() => getFromLocalStorage('adminUsers', [
     { adminCode: '1104', role: 'super-admin' }
-  ]);
-  const [auditLog, setAuditLog] = useState<AuditLogEntry[]>([]);
+  ]));
+  const [auditLog, setAuditLog] = useState<AuditLogEntry[]>(() => getFromLocalStorage('auditLog', []));
   const [impersonatingFrom, setImpersonatingFrom] = useState<User | null>(null);
 
+  // Effects to save state to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('uploads', JSON.stringify(uploads));
+    } catch (error) {
+      console.error("Failed to save uploads to localStorage:", error);
+    }
+  }, [uploads]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('adminUsers', JSON.stringify(adminUsers));
+    } catch (error) {
+      console.error("Failed to save admin users to localStorage:", error);
+    }
+  }, [adminUsers]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('auditLog', JSON.stringify(auditLog));
+    } catch (error) {
+      console.error("Failed to save audit log to localStorage:", error);
+    }
+  }, [auditLog]);
 
   useEffect(() => {
     if (alert) {
@@ -222,7 +270,7 @@ const App: React.FC = () => {
       {alert && <Alert message={alert.message} type={alert.type} onClose={() => setAlert(null)} />}
       <div className="container mx-auto p-4 sm:p-6 md:p-8 max-w-5xl relative z-10">
         <header className="text-center mb-8">
-          <h1 className="text-4xl sm:text-5xl font-bold text-slate-50 tracking-tight">Secure Content Hub</h1>
+          <h1 className="text-4xl sm:text-5xl font-bold text-slate-50 tracking-tight">mvisd link finders</h1>
           <p className="text-slate-400 mt-2 text-lg">Upload, share, and moderate community content with ease.</p>
         </header>
 
@@ -253,7 +301,7 @@ const App: React.FC = () => {
         </main>
 
         <footer className="text-center mt-12 text-slate-400">
-          <p>&copy; {new Date().getFullYear()} Secure Content Hub. All rights reserved.</p>
+          <p>&copy; {new Date().getFullYear()} mvisd link finders. All rights reserved.</p>
         </footer>
       </div>
     </div>
