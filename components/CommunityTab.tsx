@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { UploadItem, Tab, User } from '../types';
 
@@ -14,29 +15,34 @@ const UploadIcon: React.FC<{className: string}> = ({ className }) => (
 );
 
 
-const UploadItemCard: React.FC<{ item: UploadItem; currentUser: User | null; onRemove: (id: number) => void; }> = ({ item, currentUser, onRemove }) => (
-  <li className="bg-gray-800/50 border border-gray-700 rounded-lg p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 transition-shadow hover:shadow-md hover:bg-gray-800">
-    <div className="flex-grow">
-      <h3 className="font-semibold text-slate-100">{item.title}</h3>
-      <p className="text-sm text-slate-400 mt-1">{item.description}</p>
-      <a href={item.url} target="_blank" rel="noopener noreferrer" className="text-sm text-indigo-400 hover:text-indigo-300 mt-2 inline-flex items-center gap-1 group">
-        <LinkIcon className="w-4 h-4 text-slate-500 group-hover:text-indigo-400 transition"/>
-        {item.url}
-      </a>
-    </div>
-    {currentUser && (
-        <div className="flex-shrink-0 self-center sm:self-auto">
-            <button
-                onClick={() => onRemove(item.id)}
-                className="px-3 py-1.5 text-xs font-semibold text-white bg-red-600 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition"
-                aria-label={`Remove post titled ${item.title}`}
-            >
-                Remove
-            </button>
-        </div>
-    )}
-  </li>
-);
+const UploadItemCard: React.FC<{ item: UploadItem; currentUser: User | null; onRemove: (id: number) => void; }> = ({ item, currentUser, onRemove }) => {
+    const canRemove = currentUser && ['admin', 'co-owner', 'owner'].includes(currentUser.role);
+    
+    return (
+        <li className="bg-gray-800/50 border border-gray-700 rounded-lg p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 transition-shadow hover:shadow-md hover:bg-gray-800">
+            <div className="flex-grow">
+            <h3 className="font-semibold text-slate-100">{item.title}</h3>
+            <p className="text-sm text-slate-400 mt-1">{item.description}</p>
+            <a href={item.url} target="_blank" rel="noopener noreferrer" className="text-sm text-indigo-400 hover:text-indigo-300 mt-2 inline-flex items-center gap-1 group">
+                <LinkIcon className="w-4 h-4 text-slate-500 group-hover:text-indigo-400 transition"/>
+                {item.url}
+            </a>
+            <p className="text-xs text-slate-500 mt-2">Submitted by: <span className="font-semibold text-slate-400">{item.submittedBy}</span></p>
+            </div>
+            {canRemove && (
+                <div className="flex-shrink-0 self-center sm:self-auto">
+                    <button
+                        onClick={() => onRemove(item.id)}
+                        className="px-3 py-1.5 text-xs font-semibold text-white bg-red-600 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition"
+                        aria-label={`Remove post titled ${item.title}`}
+                    >
+                        Remove
+                    </button>
+                </div>
+            )}
+        </li>
+    );
+}
 
 interface CommunityTabProps {
   uploads: UploadItem[];

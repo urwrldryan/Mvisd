@@ -1,5 +1,5 @@
 
-export type UploadStatus = 'pending' | 'approved' | 'rejected';
+export type UploadStatus = 'pending' | 'approved';
 
 export interface UploadItem {
   id: number;
@@ -7,9 +7,10 @@ export interface UploadItem {
   url: string;
   description?: string;
   status: UploadStatus;
+  submittedBy: string; // username
 }
 
-export type Tab = 'main' | 'community' | 'admin';
+export type Tab = 'main' | 'community' | 'chat' | 'admin' | 'profile';
 
 export type AlertType = 'success' | 'error' | 'info';
 
@@ -18,17 +19,26 @@ export interface AlertMessage {
     type: AlertType;
 }
 
-export type UserRole = 'super-admin' | 'admin';
+export type UserRole = 'owner' | 'co-owner' | 'admin' | 'user';
 
 export interface User {
-  adminCode: string;
+  id: number;
+  username: string;
+  password: string;
   role: UserRole;
 }
 
 export interface AuditLogEntry {
-  adminCode: string;
+  adminUsername: string;
   action: 'approved' | 'rejected';
   uploadId: number;
   uploadTitle: string;
+  timestamp: Date;
+}
+
+export interface ChatMessage {
+  id: number;
+  username: string;
+  text: string;
   timestamp: Date;
 }

@@ -1,12 +1,14 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
-import { Tab, UploadItem, AlertMessage, User, AuditLogEntry } from './types';
+import { Tab, UploadItem, AlertMessage, User, AuditLogEntry, UserRole, ChatMessage } from './types';
 import MainTab from './components/MainTab';
 import CommunityTab from './components/CommunityTab';
 import AdminTab from './components/AdminTab';
+import ChatTab from './components/ChatTab';
+import ProfileTab from './components/ProfileTab';
 import Tabs from './components/Tabs';
 import Alert from './components/Alert';
 
-// Helper function to get item from localStorage and handle date parsing for audit log
 const getFromLocalStorage = <T,>(key: string, defaultValue: T): T => {
   try {
     const item = window.localStorage.getItem(key);
@@ -14,8 +16,7 @@ const getFromLocalStorage = <T,>(key: string, defaultValue: T): T => {
 
     const data = JSON.parse(item);
     
-    // Special handling to convert timestamp strings back to Date objects
-    if (key === 'auditLog' && Array.isArray(data)) {
+    if ((key === 'auditLog' || key === 'chatMessages') && Array.isArray(data)) {
       return data.map((log: any) => ({
         ...log,
         timestamp: new Date(log.timestamp),
@@ -28,7 +29,6 @@ const getFromLocalStorage = <T,>(key: string, defaultValue: T): T => {
     return defaultValue;
   }
 };
-
 
 const BackgroundAnimation: React.FC = () => (
     <div className="background-shapes" aria-hidden="true">
@@ -46,71 +46,53 @@ const BackgroundAnimation: React.FC = () => (
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<Tab>('main');
-  const [uploads, setUploads] = useState<UploadItem[]>(() => getFromLocalStorage('uploads', [
-      { id: 1, title: 'Awesome Design Resources', url: 'https://example.com/designs', status: 'approved', description: 'A collection of great design tools.' },
-      { id: 2, title: 'React Best Practices', url: 'https://example.com/react-bp', status: 'pending', description: 'Guide to writing better React code.' },
-      { id: 3, title: 'Another Pending Item', url: 'https://example.com/another-pending', status: 'pending', description: 'Awaiting moderation.'},
-      { id: 4, title: 'Tailwind CSS Cheatsheet', url: 'https://example.com/tailwind-cheats', status: 'approved', description: 'A handy reference for Tailwind classes.'}
-  ]));
+  const [uploads, setUploads] = useState<UploadItem[]>(() => getFromLocalStorage('uploads', []));
   const [alert, setAlert] = useState<AlertMessage | null>(null);
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [adminUsers, setAdminUsers] = useState<User[]>(() => getFromLocalStorage('adminUsers', [
-    { adminCode: '1104', role: 'super-admin' }
+  
+  const [users, setUsers] = useState<User[]>(() => getFromLocalStorage('users', [
+    { id: 1, username: 'urwrldryan', password: 'BigBooger', role: 'owner' },
+    { id: 2, username: 'sample_user', password: 'password', role: 'user' },
   ]));
+  const [currentUser, setCurrentUser] = useState<User | null>(() => getFromLocalStorage('currentUser', null));
   const [auditLog, setAuditLog] = useState<AuditLogEntry[]>(() => getFromLocalStorage('auditLog', []));
-  const [impersonatingFrom, setImpersonatingFrom] = useState<User | null>(null);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>(() => getFromLocalStorage('chatMessages', []));
 
-  // Effects to save state to localStorage
-  useEffect(() => {
-    try {
-      localStorage.setItem('uploads', JSON.stringify(uploads));
-    } catch (error) {
-      console.error("Failed to save uploads to localStorage:", error);
-    }
-  }, [uploads]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('adminUsers', JSON.stringify(adminUsers));
-    } catch (error) {
-      console.error("Failed to save admin users to localStorage:", error);
-    }
-  }, [adminUsers]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('auditLog', JSON.stringify(auditLog));
-    } catch (error) {
-      console.error("Failed to save audit log to localStorage:", error);
-    }
-  }, [auditLog]);
+  useEffect(() => { localStorage.setItem('uploads', JSON.stringify(uploads)); }, [uploads]);
+  useEffect(() => { localStorage.setItem('users', JSON.stringify(users)); }, [users]);
+  useEffect(() => { localStorage.setItem('currentUser', JSON.stringify(currentUser)); }, [currentUser]);
+  useEffect(() => { localStorage.setItem('auditLog', JSON.stringify(auditLog)); }, [auditLog]);
+  useEffect(() => { localStorage.setItem('chatMessages', JSON.stringify(chatMessages)); }, [chatMessages]);
 
   useEffect(() => {
     if (alert) {
-      const timer = setTimeout(() => {
-        setAlert(null);
-      }, 5000);
+      const timer = setTimeout(() => setAlert(null), 5000);
       return () => clearTimeout(timer);
     }
   }, [alert]);
 
   const handleUpload = useCallback((url: string) => {
+    if (!currentUser) {
+        setAlert({ message: 'You must be logged in to submit a link.', type: 'error' });
+        return;
+    }
     const newUpload: UploadItem = {
       id: Date.now(),
       title: url.replace(/^https?:\/\//, '').split('/')[0] || url,
       url: url,
       status: 'pending',
-      description: 'A new user submission.'
+      description: 'A new user submission.',
+      submittedBy: currentUser.username
     };
-    setUploads(prevUploads => [newUpload, ...prevUploads]);
+    setUploads(prev => [newUpload, ...prev]);
     setAlert({ message: 'Upload successful! Your submission is pending approval.', type: 'success' });
     setActiveTab('community');
-  }, []);
+  }, [currentUser]);
 
   const handleApprove = useCallback((id: number) => {
+    if (!currentUser || !['admin', 'co-owner', 'owner'].includes(currentUser.role)) return;
     let approvedItem: UploadItem | undefined;
-    setUploads(prevUploads =>
-      prevUploads.map(item => {
+    setUploads(prev =>
+      prev.map(item => {
         if (item.id === id) {
           approvedItem = { ...item, status: 'approved' };
           return approvedItem;
@@ -118,151 +100,126 @@ const App: React.FC = () => {
         return item;
       })
     );
-
-    if (approvedItem && currentUser) {
-      const newLogEntry: AuditLogEntry = {
-        adminCode: currentUser.adminCode,
-        action: 'approved',
-        uploadId: id,
-        uploadTitle: approvedItem.title,
-        timestamp: new Date(),
-      };
-      setAuditLog(prevLog => [newLogEntry, ...prevLog]);
+    if (approvedItem) {
+      setAuditLog(prev => [{ adminUsername: currentUser.username, action: 'approved', uploadId: id, uploadTitle: approvedItem!.title, timestamp: new Date() }, ...prev]);
     }
-
     setAlert({ message: `Submission #${id} has been approved.`, type: 'info' });
   }, [currentUser]);
 
   const handleReject = useCallback((id: number) => {
+    if (!currentUser || !['admin', 'co-owner', 'owner'].includes(currentUser.role)) return;
     const rejectedItem = uploads.find(item => item.id === id);
-    setUploads(prevUploads => prevUploads.filter(item => item.id !== id));
-    
-    if (rejectedItem && currentUser) {
-      const newLogEntry: AuditLogEntry = {
-        adminCode: currentUser.adminCode,
-        action: 'rejected',
-        uploadId: id,
-        uploadTitle: rejectedItem.title,
-        timestamp: new Date(),
-      };
-      setAuditLog(prevLog => [newLogEntry, ...prevLog]);
+    setUploads(prev => prev.filter(item => item.id !== id));
+    if (rejectedItem) {
+      setAuditLog(prev => [{ adminUsername: currentUser.username, action: 'rejected', uploadId: id, uploadTitle: rejectedItem.title, timestamp: new Date() }, ...prev]);
     }
-
     setAlert({ message: `Submission #${id} has been rejected and removed.`, type: 'info' });
   }, [uploads, currentUser]);
   
   const handleRemove = useCallback((id: number) => {
-    setUploads(prevUploads => prevUploads.filter(item => item.id !== id));
+    if (!currentUser || !['admin', 'co-owner', 'owner'].includes(currentUser.role)) return;
+    setUploads(prev => prev.filter(item => item.id !== id));
     setAlert({ message: `Post #${id} has been removed.`, type: 'info' });
-  }, []);
+  }, [currentUser]);
 
-  const handleAdminLogin = useCallback((adminCode: string) => {
-    const user = adminUsers.find(u => u.adminCode === adminCode);
-    if (user) {
-      setCurrentUser(user);
-      setAlert({ message: `Welcome, Admin ${user.adminCode}!`, type: 'success' });
-    } else {
-      setCurrentUser(null);
-      setAlert({ message: 'Incorrect admin code.', type: 'error' });
-    }
-  }, [adminUsers]);
-  
-  const handleAdminLogout = useCallback(() => {
-    setCurrentUser(null);
-    setImpersonatingFrom(null);
-    setAlert({ message: 'You have been successfully logged out.', type: 'info' });
-  }, []);
-
-  const handleCreateAdmin = useCallback((adminCode: string) => {
-    if (currentUser?.role !== 'super-admin') {
-      setAlert({ message: 'You do not have permission to create admins.', type: 'error' });
-      return;
-    }
-    if (!/^\d+$/.test(adminCode)) {
-      setAlert({ message: 'Admin code must be a number.', type: 'error'});
-      return;
-    }
-    if (adminUsers.some(u => u.adminCode === adminCode)) {
-      setAlert({ message: 'Admin code already exists.', type: 'error' });
-      return;
-    }
-    const newUser: User = { adminCode, role: 'admin' };
-    setAdminUsers(prev => [...prev, newUser]);
-    setAlert({ message: `Admin with code "${adminCode}" created successfully.`, type: 'success' });
-  }, [currentUser, adminUsers]);
-
-  const handleChangeAdminCode = useCallback((newCode: string) => {
-    if (currentUser?.role !== 'super-admin') {
-      setAlert({ message: 'Only the owner can change their admin code.', type: 'error' });
-      return;
-    }
-    if (!/^\d+$/.test(newCode)) {
-      setAlert({ message: 'New admin code must be a number.', type: 'error' });
-      return;
-    }
-    if (adminUsers.some(u => u.adminCode === newCode && u.role !== 'super-admin')) {
-      setAlert({ message: 'This admin code is already in use by another admin.', type: 'error' });
-      return;
-    }
-
-    const oldCode = currentUser.adminCode;
-    
-    setAdminUsers(prevAdmins => 
-      prevAdmins.map(user => 
-        user.adminCode === oldCode && user.role === 'super-admin'
-          ? { ...user, adminCode: newCode }
-          : user
-      )
-    );
-    
-    setCurrentUser(prevUser => {
-      if (prevUser && prevUser.adminCode === oldCode && prevUser.role === 'super-admin') {
-        return { ...prevUser, adminCode: newCode };
+  const handleRegister = useCallback((username: string, password: string) => {
+      if (users.some(u => u.username.toLowerCase() === username.toLowerCase())) {
+          setAlert({ message: 'Username already exists.', type: 'error' });
+          return;
       }
-      return prevUser;
-    });
+      const newUser: User = { id: Date.now(), username, password, role: 'user' };
+      setUsers(prev => [...prev, newUser]);
+      setCurrentUser(newUser);
+      setAlert({ message: `Welcome, ${username}! Your account has been created.`, type: 'success' });
+  }, [users]);
+  
+  const handleLogin = useCallback((username: string, password: string) => {
+      const user = users.find(u => u.username.toLowerCase() === username.toLowerCase() && u.password === password);
+      if (user) {
+          setCurrentUser(user);
+          setAlert({ message: `Welcome back, ${user.username}!`, type: 'success' });
+      } else {
+          setAlert({ message: 'Invalid username or password.', type: 'error' });
+      }
+  }, [users]);
+  
+  const handleLogout = useCallback(() => {
+      setCurrentUser(null);
+      setActiveTab('main');
+      setAlert({ message: 'You have been logged out.', type: 'info' });
+  }, []);
+  
+  const handleSendMessage = useCallback((text: string) => {
+      if (!currentUser) return;
+      const newMessage: ChatMessage = { id: Date.now(), username: currentUser.username, text, timestamp: new Date() };
+      setChatMessages(prev => [...prev, newMessage]);
+  }, [currentUser]);
 
-    setAlert({ message: `Your admin code has been changed to "${newCode}".`, type: 'success' });
-  }, [currentUser, adminUsers]);
+  const handleChangeUsername = useCallback((newUsername: string) => {
+    if (!currentUser) return;
+    if (users.some(u => u.username.toLowerCase() === newUsername.toLowerCase() && u.id !== currentUser.id)) {
+        setAlert({ message: 'This username is already taken.', type: 'error' });
+        return false;
+    }
+    const oldUsername = currentUser.username;
+    
+    // Update user in users list
+    setUsers(prev => prev.map(u => u.id === currentUser.id ? { ...u, username: newUsername } : u));
+    
+    // Update currentUser state
+    setCurrentUser(prev => prev ? { ...prev, username: newUsername } : null);
 
-  const handleImpersonateStart = useCallback((adminCode: string) => {
-    if (currentUser?.role !== 'super-admin' || impersonatingFrom) {
-        return; // Only super-admin who is not already impersonating can do this
-    }
-    const targetUser = adminUsers.find(u => u.adminCode === adminCode && u.role === 'admin');
-    if (targetUser) {
-        setImpersonatingFrom(currentUser);
-        setCurrentUser(targetUser);
-        setAlert({ message: `Now impersonating admin "${targetUser.adminCode}".`, type: 'info' });
-    }
-  }, [currentUser, adminUsers, impersonatingFrom]);
+    // Update username in other parts of the app state
+    setUploads(prev => prev.map(u => u.submittedBy === oldUsername ? { ...u, submittedBy: newUsername } : u));
+    setChatMessages(prev => prev.map(m => m.username === oldUsername ? { ...m, username: newUsername } : m));
+    setAuditLog(prev => prev.map(l => l.adminUsername === oldUsername ? { ...l, adminUsername: newUsername } : l));
 
-  const handleImpersonateStop = useCallback(() => {
-    if (impersonatingFrom) {
-        setCurrentUser(impersonatingFrom);
-        setImpersonatingFrom(null);
-        setAlert({ message: 'Returned to your super-admin session.', type: 'info' });
-    }
-  }, [impersonatingFrom]);
+    setAlert({ message: `Your username has been updated to ${newUsername}.`, type: 'success' });
+    return true;
+  }, [currentUser, users]);
 
-  const handleDeleteAdmin = useCallback((adminCode: string) => {
-    if (currentUser?.role !== 'super-admin') {
-      setAlert({ message: 'You do not have permission to delete admins.', type: 'error' });
-      return;
-    }
-    const adminToDelete = adminUsers.find(u => u.adminCode === adminCode);
-    if (!adminToDelete) {
-      setAlert({ message: 'Admin not found.', type: 'error' });
-      return;
-    }
-    if (adminToDelete.role === 'super-admin') {
-      setAlert({ message: 'Cannot delete the super-admin account.', type: 'error' });
-      return;
-    }
-    setAdminUsers(prevAdmins => prevAdmins.filter(user => user.adminCode !== adminCode));
-    setAlert({ message: `Admin "${adminCode}" has been deleted.`, type: 'success' });
-  }, [currentUser, adminUsers]);
+  const handleChangePassword = useCallback((newPassword: string) => {
+    if (!currentUser) return;
+    setUsers(prev => prev.map(u => u.id === currentUser.id ? { ...u, password: newPassword } : u));
+    setCurrentUser(prev => prev ? { ...prev, password: newPassword } : null);
+    setAlert({ message: 'Your password has been changed successfully.', type: 'success' });
+    return true;
+  }, [currentUser]);
 
+  const handleUpdateUserRole = useCallback((userId: number, newRole: UserRole) => {
+    if (currentUser?.role !== 'owner') {
+        setAlert({ message: 'Only the owner can change user roles.', type: 'error' });
+        return;
+    }
+    if (currentUser.id === userId) {
+        setAlert({ message: 'You cannot change your own role.', type: 'error' });
+        return;
+    }
+    setUsers(prev => prev.map(u => u.id === userId ? { ...u, role: newRole } : u));
+    setAlert({ message: 'User role has been updated.', type: 'success' });
+  }, [currentUser]);
+
+  const handleDeleteUser = useCallback((userId: number) => {
+      if (!currentUser || !['owner', 'co-owner'].includes(currentUser.role)) {
+          setAlert({ message: 'You do not have permission to delete users.', type: 'error' });
+          return;
+      }
+      const userToDelete = users.find(u => u.id === userId);
+      if (!userToDelete) return;
+
+      if (userToDelete.role === 'owner') {
+          setAlert({ message: 'Cannot delete an owner account.', type: 'error' });
+          return;
+      }
+      if (currentUser.role === 'co-owner' && userToDelete.role === 'co-owner') {
+          setAlert({ message: 'Co-owners cannot delete other co-owners.', type: 'error' });
+          return;
+      }
+
+      setUsers(prev => prev.filter(u => u.id !== userId));
+      setAlert({ message: `User "${userToDelete.username}" has been deleted.`, type: 'success' });
+
+  }, [currentUser, users]);
 
   return (
     <div className="min-h-screen bg-gray-900 text-slate-200 font-sans relative isolate overflow-hidden">
@@ -275,28 +232,13 @@ const App: React.FC = () => {
         </header>
 
         <main className="bg-gray-800/50 backdrop-blur-lg rounded-xl shadow-lg ring-1 ring-white/10">
-          <Tabs activeTab={activeTab} setActiveTab={setActiveTab} />
+          <Tabs activeTab={activeTab} setActiveTab={setActiveTab} currentUser={currentUser} />
           <div className="p-6 sm:p-8">
-            {activeTab === 'main' && <MainTab onUpload={handleUpload} setAlert={setAlert} />}
+            {activeTab === 'main' && <MainTab currentUser={currentUser} onRegister={handleRegister} onLogin={handleLogin} onUpload={handleUpload} setAlert={setAlert} />}
             {activeTab === 'community' && <CommunityTab uploads={uploads} currentUser={currentUser} setActiveTab={setActiveTab} onRemove={handleRemove} />}
-            {activeTab === 'admin' && (
-              <AdminTab
-                uploads={uploads}
-                onApprove={handleApprove}
-                onReject={handleReject}
-                currentUser={currentUser}
-                onAdminLogin={handleAdminLogin}
-                onAdminLogout={handleAdminLogout}
-                onCreateAdmin={handleCreateAdmin}
-                onChangeAdminCode={handleChangeAdminCode}
-                adminUsers={adminUsers}
-                auditLog={auditLog}
-                impersonatingFrom={impersonatingFrom}
-                onImpersonateStart={handleImpersonateStart}
-                onImpersonateStop={handleImpersonateStop}
-                onDeleteAdmin={handleDeleteAdmin}
-              />
-            )}
+            {activeTab === 'chat' && currentUser && <ChatTab messages={chatMessages} currentUser={currentUser} onSendMessage={handleSendMessage} setActiveTab={setActiveTab} />}
+            {activeTab === 'profile' && currentUser && <ProfileTab currentUser={currentUser} onLogout={handleLogout} onChangeUsername={handleChangeUsername} onChangePassword={handleChangePassword} setAlert={setAlert} />}
+            {activeTab === 'admin' && <AdminTab uploads={uploads} onApprove={handleApprove} onReject={handleReject} currentUser={currentUser} allUsers={users} onUpdateUserRole={handleUpdateUserRole} onDeleteUser={handleDeleteUser} auditLog={auditLog} />}
           </div>
         </main>
 
