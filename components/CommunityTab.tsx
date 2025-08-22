@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { UploadItem, Tab, User } from '../types';
 
@@ -61,7 +60,7 @@ const CommunityTab: React.FC<CommunityTabProps> = ({ uploads, currentUser, setAc
                 <h2 className="text-2xl font-bold text-slate-100 mb-1">Community Submissions</h2>
                 <p className="text-slate-400">Here's what the community has been sharing. Approved links are available to everyone.</p>
             </div>
-            {!currentUser && (
+            {currentUser ? (
                 <button
                     onClick={() => setActiveTab('main')}
                     className="w-full sm:w-auto flex-shrink-0 flex justify-center items-center gap-2 px-4 py-2 font-semibold text-white bg-indigo-600 rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-200 ease-in-out"
@@ -70,6 +69,10 @@ const CommunityTab: React.FC<CommunityTabProps> = ({ uploads, currentUser, setAc
                     <UploadIcon className="w-5 h-5"/>
                     Share a Link
                 </button>
+            ) : (
+                <div className="text-center sm:text-right">
+                    <p className="text-slate-400">Please <button onClick={() => setActiveTab('main')} className="font-semibold text-indigo-400 hover:underline focus:outline-none">log in or register</button> to share a link.</p>
+                </div>
             )}
         </div>
 

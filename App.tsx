@@ -30,6 +30,22 @@ const getFromLocalStorage = <T,>(key: string, defaultValue: T): T => {
   }
 };
 
+const getInitialUser = (): User | null => {
+    try {
+        const localUserItem = localStorage.getItem('currentUser');
+        if (localUserItem) return JSON.parse(localUserItem);
+        
+        const sessionUserItem = sessionStorage.getItem('currentUser');
+        if (sessionUserItem) return JSON.parse(sessionUserItem);
+
+        return null;
+    } catch (error) {
+        console.warn(`Error reading user from storage:`, error);
+        return null;
+    }
+};
+
+
 const BackgroundAnimation: React.FC = () => (
     <div className="background-shapes" aria-hidden="true">
         <div className="shape" style={{ left: '10%', width: '80px', height: '80px', animationDelay: '0s' }}></div>
@@ -53,15 +69,53 @@ const App: React.FC = () => {
     { id: 1, username: 'urwrldryan', password: 'BigBooger', role: 'owner' },
     { id: 2, username: 'sample_user', password: 'password', role: 'user' },
   ]));
-  const [currentUser, setCurrentUser] = useState<User | null>(() => getFromLocalStorage('currentUser', null));
+  const [currentUser, setCurrentUser] = useState<User | null>(() => getInitialUser());
   const [auditLog, setAuditLog] = useState<AuditLogEntry[]>(() => getFromLocalStorage('auditLog', []));
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>(() => getFromLocalStorage('chatMessages', []));
 
   useEffect(() => { localStorage.setItem('uploads', JSON.stringify(uploads)); }, [uploads]);
   useEffect(() => { localStorage.setItem('users', JSON.stringify(users)); }, [users]);
-  useEffect(() => { localStorage.setItem('currentUser', JSON.stringify(currentUser)); }, [currentUser]);
   useEffect(() => { localStorage.setItem('auditLog', JSON.stringify(auditLog)); }, [auditLog]);
   useEffect(() => { localStorage.setItem('chatMessages', JSON.stringify(chatMessages)); }, [chatMessages]);
+
+  useEffect(() => {
+    if (currentUser) {
+        const remember = localStorage.getItem('rememberUser') === 'true';
+        if (remember) {
+            localStorage.setItem('currentUser', JSON.stringify(currentUser));
+            sessionStorage.removeItem('currentUser');
+        } else {
+            sessionStorage.setItem('currentUser', JSON.stringify(currentUser));
+            localStorage.removeItem('currentUser');
+        }
+    } else {
+        // On logout
+        localStorage.removeItem('currentUser');
+        localStorage.removeItem('rememberUser');
+        sessionStorage.removeItem('currentUser');
+    }
+  }, [currentUser]);
+
+
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'chatMessages' && e.newValue) {
+        setChatMessages(getFromLocalStorage('chatMessages', []));
+      }
+      if (e.key === 'uploads' && e.newValue) {
+        setUploads(getFromLocalStorage('uploads', []));
+      }
+      if (e.key === 'users' && e.newValue) {
+        setUsers(getFromLocalStorage('users', []));
+      }
+      if (e.key === 'auditLog' && e.newValue) {
+        setAuditLog(getFromLocalStorage('auditLog', []));
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
 
   useEffect(() => {
     if (alert) {
@@ -129,13 +183,20 @@ const App: React.FC = () => {
       }
       const newUser: User = { id: Date.now(), username, password, role: 'user' };
       setUsers(prev => [...prev, newUser]);
+      // Log in the new user automatically, but don't "remember" them by default.
+      localStorage.removeItem('rememberUser');
       setCurrentUser(newUser);
       setAlert({ message: `Welcome, ${username}! Your account has been created.`, type: 'success' });
   }, [users]);
   
-  const handleLogin = useCallback((username: string, password: string) => {
+  const handleLogin = useCallback((username: string, password: string, rememberMe: boolean) => {
       const user = users.find(u => u.username.toLowerCase() === username.toLowerCase() && u.password === password);
       if (user) {
+          if (rememberMe) {
+            localStorage.setItem('rememberUser', 'true');
+          } else {
+            localStorage.removeItem('rememberUser');
+          }
           setCurrentUser(user);
           setAlert({ message: `Welcome back, ${user.username}!`, type: 'success' });
       } else {
@@ -152,8 +213,10 @@ const App: React.FC = () => {
   const handleSendMessage = useCallback((text: string) => {
       if (!currentUser) return;
       const newMessage: ChatMessage = { id: Date.now(), username: currentUser.username, text, timestamp: new Date() };
-      setChatMessages(prev => [...prev, newMessage]);
-  }, [currentUser]);
+      const updatedMessages = [...chatMessages, newMessage];
+      setChatMessages(updatedMessages);
+      localStorage.setItem('chatMessages', JSON.stringify(updatedMessages));
+  }, [currentUser, chatMessages]);
 
   const handleChangeUsername = useCallback((newUsername: string) => {
     if (!currentUser) return;

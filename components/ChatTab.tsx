@@ -40,9 +40,13 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, currentUser, onSendMessage,
                 }`}
               >
                 <p className="text-sm break-words">
-                  {!isCurrentUser && (
-                    <span className="font-bold text-indigo-300 mr-2">{msg.username}</span>
-                  )}
+                  <span
+                    className={`font-bold mr-2 ${
+                      isCurrentUser ? 'text-white/80' : 'text-indigo-300'
+                    }`}
+                  >
+                    ({msg.username}):
+                  </span>
                   {msg.text}
                 </p>
               </div>
